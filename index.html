@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC Video Chat</title>
+    <style>
+      video {
+        width: 200px;
+        height: 150px;
+        margin: 5px;
+      }
+      #videos {
+        display: flex;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebRTC Video Chat</h1>
+    <div id="videos">
+      <video id="localVideo" autoplay muted></video>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>

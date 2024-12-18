@@ -1,0 +1,14 @@
+{
+  "name": "webrtc",
+  "version": "1.0.0",
+  "description": "webrtc",
+  "main": "index.js",
+  "scripts": {
+    "test": "start"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
