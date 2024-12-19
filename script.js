@@ -27,21 +27,12 @@ socket.onopen = () => {
 
 socket.onmessage = async (event) => {
   try {
-    let data;
-
-    // Handle Blob data from WebSocket
-    if (event.data instanceof Blob) {
-      const text = await event.data.text(); // Convert Blob to text
-      data = JSON.parse(text); // Parse JSON from text
-    } else {
-      data = JSON.parse(event.data); // Parse JSON directly if not a Blob
-    }
-
+    const data = JSON.parse(event.data);
     const { type, from, offer, answer, candidate } = data;
 
     switch (type) {
       case "join":
-        handleNewJoin(from);
+        if (!peers[from]) initiateConnection(from);
         break;
       case "offer":
         await handleOffer(from, offer);
@@ -50,7 +41,7 @@ socket.onmessage = async (event) => {
         await handleAnswer(from, answer);
         break;
       case "candidate":
-        handleCandidate(from, candidate);
+        if (candidate) handleCandidate(from, candidate);
         break;
     }
   } catch (error) {
@@ -58,30 +49,30 @@ socket.onmessage = async (event) => {
   }
 };
 
-function handleNewJoin(from) {
-  if (!peers[from]) {
-    const peerConnection = createPeerConnection(from);
-    peers[from] = peerConnection;
+function initiateConnection(from) {
+  const peerConnection = createPeerConnection(from);
+  peers[from] = peerConnection;
 
-    // Create and send an offer
-    peerConnection
-      .createOffer()
-      .then((offer) => peerConnection.setLocalDescription(offer))
-      .then(() => {
-        socket.send(
-          JSON.stringify({
-            type: "offer",
-            to: from,
-            offer: peers[from].localDescription,
-          })
-        );
-      })
-      .catch((error) => console.error("Error creating an offer:", error));
-  }
+  // Create and send an offer
+  peerConnection
+    .createOffer()
+    .then((offer) => peerConnection.setLocalDescription(offer))
+    .then(() => {
+      socket.send(
+        JSON.stringify({
+          type: "offer",
+          to: from,
+          offer: peerConnection.localDescription,
+        })
+      );
+    })
+    .catch((error) => console.error("Error creating an offer:", error));
 }
 
 async function handleOffer(from, offer) {
   const peerConnection = createPeerConnection(from);
+  peers[from] = peerConnection;
+
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
 
   const answer = await peerConnection.createAnswer();
@@ -100,9 +91,7 @@ function handleCandidate(from, candidate) {
   if (peers[from]) {
     peers[from]
       .addIceCandidate(new RTCIceCandidate(candidate))
-      .catch((error) => {
-        console.error("Error adding ICE candidate:", error);
-      });
+      .catch((error) => console.error("Error adding ICE candidate:", error));
   }
 }
 
@@ -134,14 +123,6 @@ function createPeerConnection(id) {
     }
   };
 
-  // Handle connection state changes
-  peerConnection.onconnectionstatechange = () => {
-    if (peerConnection.connectionState === "disconnected") {
-      removeVideoStream(id);
-      delete peers[id];
-    }
-  };
-
   return peerConnection;
 }
 
@@ -153,11 +134,4 @@ function addVideoStream(id, stream) {
   video.autoplay = true;
   video.srcObject = stream;
   videosContainer.appendChild(video);
-}
-
-function removeVideoStream(id) {
-  const video = document.getElementById(id);
-  if (video) {
-    video.remove();
-  }
 }
