@@ -1,7 +1,7 @@
 const localVideo = document.getElementById("localVideo");
 const videosContainer = document.getElementById("videos");
 const peers = {}; // Store peer connections
-const socket = new WebSocket("ws://localhost:3000");
+const socket = new WebSocket("ws://45.198.13.48:3005");
 let localStream;
 
 // Step 1: Get local video and audio
