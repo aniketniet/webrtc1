@@ -27,8 +27,17 @@ socket.onopen = () => {
 
 socket.onmessage = async (event) => {
   try {
-    const message = JSON.parse(event.data);
-    const { type, from, offer, answer, candidate } = message;
+    let data;
+
+    // Handle Blob data from WebSocket
+    if (event.data instanceof Blob) {
+      const text = await event.data.text(); // Convert Blob to text
+      data = JSON.parse(text); // Parse JSON from text
+    } else {
+      data = JSON.parse(event.data); // Parse JSON directly if not a Blob
+    }
+
+    const { type, from, offer, answer, candidate } = data;
 
     switch (type) {
       case "join":
