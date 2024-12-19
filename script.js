@@ -4,36 +4,73 @@ const peers = {}; // Store peer connections
 const socket = new WebSocket("ws://45.198.13.48:3005");
 let localStream;
 
-// Step 1: Get local video and audio
+// Step 1: Start local video and audio
 async function startLocalStream() {
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
-  localVideo.srcObject = localStream;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    localVideo.srcObject = localStream;
+  } catch (error) {
+    console.error("Error accessing media devices:", error);
+  }
 }
 
 startLocalStream();
 
-// Step 2: Handle WebSocket signaling
-socket.onmessage = async (event) => {
-  const message = JSON.parse(event.data);
-  const { type, from, offer, answer, candidate } = message;
+// Step 2: WebSocket signaling
+socket.onopen = () => {
+  console.log("Connected to WebSocket server");
+  socket.send(JSON.stringify({ type: "join" }));
+};
 
-  switch (type) {
-    case "offer":
-      await handleOffer(from, offer);
-      break;
-    case "answer":
-      await peers[from].setRemoteDescription(new RTCSessionDescription(answer));
-      break;
-    case "candidate":
-      peers[from].addIceCandidate(new RTCIceCandidate(candidate));
-      break;
+socket.onmessage = async (event) => {
+  try {
+    const message = JSON.parse(event.data);
+    const { type, from, offer, answer, candidate } = message;
+
+    switch (type) {
+      case "join":
+        handleNewJoin(from);
+        break;
+      case "offer":
+        await handleOffer(from, offer);
+        break;
+      case "answer":
+        await handleAnswer(from, answer);
+        break;
+      case "candidate":
+        handleCandidate(from, candidate);
+        break;
+    }
+  } catch (error) {
+    console.error("Error handling message:", error);
   }
 };
 
-// Step 3: Create a new connection for each user
+function handleNewJoin(from) {
+  if (!peers[from]) {
+    const peerConnection = createPeerConnection(from);
+    peers[from] = peerConnection;
+
+    // Create and send an offer
+    peerConnection
+      .createOffer()
+      .then((offer) => peerConnection.setLocalDescription(offer))
+      .then(() => {
+        socket.send(
+          JSON.stringify({
+            type: "offer",
+            to: from,
+            offer: peers[from].localDescription,
+          })
+        );
+      })
+      .catch((error) => console.error("Error creating an offer:", error));
+  }
+}
+
 async function handleOffer(from, offer) {
   const peerConnection = createPeerConnection(from);
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -44,21 +81,38 @@ async function handleOffer(from, offer) {
   socket.send(JSON.stringify({ type: "answer", to: from, answer }));
 }
 
+async function handleAnswer(from, answer) {
+  if (peers[from]) {
+    await peers[from].setRemoteDescription(new RTCSessionDescription(answer));
+  }
+}
+
+function handleCandidate(from, candidate) {
+  if (peers[from]) {
+    peers[from]
+      .addIceCandidate(new RTCIceCandidate(candidate))
+      .catch((error) => {
+        console.error("Error adding ICE candidate:", error);
+      });
+  }
+}
+
+// Step 3: Create a new peer connection
 function createPeerConnection(id) {
   const peerConnection = new RTCPeerConnection();
 
-  // Add local stream tracks to the peer connection
+  // Add local stream tracks
   localStream
     .getTracks()
     .forEach((track) => peerConnection.addTrack(track, localStream));
 
-  // Add remote stream to the UI
+  // Handle incoming remote streams
   peerConnection.ontrack = (event) => {
     const [remoteStream] = event.streams;
     addVideoStream(id, remoteStream);
   };
 
-  // Send ICE candidates to signaling server
+  // Handle ICE candidates
   peerConnection.onicecandidate = (event) => {
     if (event.candidate) {
       socket.send(
@@ -71,11 +125,20 @@ function createPeerConnection(id) {
     }
   };
 
-  peers[id] = peerConnection;
+  // Handle connection state changes
+  peerConnection.onconnectionstatechange = () => {
+    if (peerConnection.connectionState === "disconnected") {
+      removeVideoStream(id);
+      delete peers[id];
+    }
+  };
+
   return peerConnection;
 }
 
+// Step 4: Manage video streams
 function addVideoStream(id, stream) {
+  if (document.getElementById(id)) return; // Avoid duplicates
   const video = document.createElement("video");
   video.id = id;
   video.autoplay = true;
@@ -83,18 +146,9 @@ function addVideoStream(id, stream) {
   videosContainer.appendChild(video);
 }
 
-// Step 4: Send an offer when a new user connects
-socket.onopen = () => {
-  socket.send(JSON.stringify({ type: "join" }));
-};
-
-socket.onmessage = async (event) => {
-  const message = JSON.parse(event.data);
-  if (message.type === "join" && message.from !== socket.id) {
-    const peerConnection = createPeerConnection(message.from);
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    socket.send(JSON.stringify({ type: "offer", to: message.from, offer }));
+function removeVideoStream(id) {
+  const video = document.getElementById(id);
+  if (video) {
+    video.remove();
   }
-};
+}
